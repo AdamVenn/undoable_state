@@ -1,0 +1,9 @@
+[Bb]uild/
+[Bb]uilds/
+.vscode/
+.vs/
+.cache/
+.DS_Store
+._*
+*~
+[Tt]humbs.db
