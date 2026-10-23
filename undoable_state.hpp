@@ -49,6 +49,8 @@ public:
     {
         snapshot();
         undoableAction(buffer[current]);
+        if (onAction)
+            onAction(buffer[current]);
     }
 
     /*
@@ -58,6 +60,8 @@ public:
     void doWithoutSnapshot(Action actionWhichCannotBeUndone)
     {
         actionWhichCannotBeUndone(buffer[current]);
+        if (onAction)
+            onAction(buffer[current]);
     }
 
     /* Revert to the previous state if available. */
@@ -120,6 +124,11 @@ public:
         onRedo = callback;
     }
 
+    void setOnAction(Callback callback)
+    {
+        onAction = callback;
+    }
+
 private:
     size_t prev(size_t index) const
     {
@@ -137,4 +146,5 @@ private:
     size_t tail{ Capacity - 1 };
     Callback onUndo;
     Callback onRedo;
+    Callback onAction;
 };
