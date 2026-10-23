@@ -1,6 +1,6 @@
 #include "undoable_state.hpp"
 #include <cstddef>
-#include <print>
+#include <expected>
 
 struct TestState
 {
@@ -31,7 +31,10 @@ int test_stack()
     // Fill the undo buffer
     for (int i{ 1 }; i < 63; ++i)
     {
-        state.snapshotAnd([i](TestState& s) { s.x = i; });
+        state.snapshotAnd([i](TestState& s) -> UndoableStateResult {
+            s.x = i;
+            return {};
+        });
 
         if (state.numAvailableUndos() != std::min(static_cast<size_t>(i), 62ul))
             return -1;
@@ -46,7 +49,10 @@ int test_stack()
             return -1;
     }
 
-    state.snapshotAnd([](TestState& s) { s.x = 64; });
+    state.snapshotAnd([](TestState& s) -> UndoableStateResult {
+        s.x = 64;
+        return {};
+    });
 
     // At this point, tail has advanced one, since we filled the buffer.
 
@@ -175,7 +181,32 @@ int test_stack()
     if (!state.canRedo())
         return -1;
 
-    state.snapshotAnd([](TestState& s) { s.y = 5; });
+    state.snapshotAnd([](TestState& s) -> UndoableStateResult {
+        s.y = 5;
+        return {};
+    });
+
+    if (!state.canUndo())
+        return -1;
+
+    if (state.canRedo())
+        return -1;
+
+    if (state.numAvailableUndos() != 53)
+        return -1;
+
+    if (state.numAvailableRedos() != 0)
+        return -1;
+
+    // Check the state is unchanged after a failed action
+
+    state.snapshotAnd([](TestState& s) -> UndoableStateResult {
+        s.y = 100;
+        return std::unexpected{ "An error" };
+    });
+
+    if (state->y != 5)
+        return -1;
 
     if (!state.canUndo())
         return -1;

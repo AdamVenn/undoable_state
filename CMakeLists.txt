@@ -23,6 +23,9 @@ set_source_files_properties(
 add_executable(undoable_state_test test/unit_test.cpp)
 target_link_libraries(undoable_state_test PRIVATE undoable_state_lib)
 
+add_executable(readme_example test/readme_example.cpp)
+target_link_libraries(readme_example PRIVATE undoable_state_lib)
+
 enable_testing()
 add_test(NAME undoable_state_test COMMAND undoable_state_test)
 

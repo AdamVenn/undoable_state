@@ -1,18 +1,35 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
+#include <concepts>
 #include <cstddef>
+#include <expected>
 #include <functional>
+#include <string>
+#include <type_traits>
+#include <utility>
 
-template <typename ModelType, size_t Capacity = 64>
+/* The result of action lambdas passed to the undoable state
+Use this to get error messages back from your action lambdas. */
+using UndoableStateResult = std::expected<void, std::string>;
+
+/* The model contained by the undoable state needs to be moved and default-initialized */
+template <typename T>
+concept UndoableModel = std::default_initializable<T>
+    && std::copy_constructible<T>
+    && std::is_nothrow_move_assignable_v<T>;
+
+template <UndoableModel ModelType, std::size_t Capacity = 64>
 class UndoableState
 {
 public:
     static_assert((Capacity & (Capacity - 1)) == 0, "Capacity must be a power of 2");
     static_assert(Capacity != 0, "Capacity must not be 0");
 
-    using Action = std::function<void(ModelType&)>;
+    using Action = std::function<UndoableStateResult(ModelType&)>;
     using Callback = std::function<void(const ModelType&)>;
+    using CallbackWithError = std::function<void(const ModelType&, const std::string& errorMessage)>;
 
     /* Take a snapshot. To do an action, use snapshotAnd. */
     void snapshot()
@@ -45,13 +62,27 @@ public:
     /*
     Take a snapshot and do the action with the state.
     Use this if you want your action to be undoable.
+    If the action fails, the undo buffer will be unaffected and
+    onFailedAction will be called.
     */
     void snapshotAnd(Action undoableAction)
     {
-        snapshot();
-        undoableAction(buffer[current]);
-        if (onAction)
-            onAction(buffer[current]);
+        ModelType working{ buffer[current] };
+
+        if (auto res = undoableAction(working); res)
+        {
+            snapshot();
+            buffer[current] = std::move(working);
+
+            if (onAction)
+                onAction(buffer[current]);
+        }
+        else
+        {
+            if (onFailedAction)
+                onFailedAction(buffer[current], res.error());
+            return;
+        }
     }
 
     /*
@@ -60,9 +91,21 @@ public:
     */
     void doWithoutSnapshot(Action actionWhichCannotBeUndone)
     {
-        actionWhichCannotBeUndone(buffer[current]);
-        if (onAction)
-            onAction(buffer[current]);
+        ModelType working{ buffer[current] };
+
+        if (auto res = actionWhichCannotBeUndone(working); res)
+        {
+            buffer[current] = std::move(working);
+
+            if (onAction)
+                onAction(buffer[current]);
+        }
+        else
+        {
+            if (onFailedAction)
+                onFailedAction(buffer[current], res.error());
+            return;
+        }
     }
 
     /* Revert to the previous state if available. */
@@ -132,17 +175,22 @@ public:
 
     void setOnUndo(Callback callback)
     {
-        onUndo = callback;
+        onUndo = std::move(callback);
     }
 
     void setOnRedo(Callback callback)
     {
-        onRedo = callback;
+        onRedo = std::move(callback);
     }
 
     void setOnAction(Callback callback)
     {
-        onAction = callback;
+        onAction = std::move(callback);
+    }
+
+    void setOnFailedAction(CallbackWithError callback)
+    {
+        onFailedAction = std::move(callback);
     }
 
 private:
@@ -163,4 +211,5 @@ private:
     Callback onUndo;
     Callback onRedo;
     Callback onAction;
+    CallbackWithError onFailedAction;
 };

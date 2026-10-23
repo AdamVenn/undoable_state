@@ -1,6 +1,11 @@
 # undoable_state
 A simple snapshot-based undoable container
 
+## Good to know
+ - Copies each version of the state.
+ - It has no awareness of threads.
+ - 64 states by default, giving 63 undos.
+
 ## Example Usage
 ```cpp
 #include "undoable_state.hpp"
@@ -9,27 +14,38 @@ A simple snapshot-based undoable container
 #include <map>
 #include <string>
 
-// Classes/function used for the example
-class guiLibraryTable;
-std::vector<std::pair<std::string, std::string>> parseFile(const std::filesystem::path& f);
-
 // The application state will be a simple map of strings
 using Model = std::map<std::string, std::string>;
-using UndoableModel = UndoableState<Model>;
+using UndoableStateModel = UndoableState<Model>;
+
+// Classes/function used for the example
+class GuiLibraryTable
+{
+public:
+    void updateContent(const Model&) {}
+    void failureFlash(const Model&) {}
+};
+std::vector<std::pair<std::string, std::string>> parseFile(const std::filesystem::path& f);
 
 // The application model will hold the data for a table widget on screen
 class ApplicationModel
 {
 public:
-    ApplicationModel(guiLibraryTable& table) :
+    ApplicationModel(GuiLibraryTable& table) :
         guiTable{ table }
     {
-        // You can set a callback to perform an action after an undo/redo
+        // You can set callbacks to perform an action after the operations
         model.setOnUndo([&](const Model& m) {
             guiTable.updateContent(m);
         });
-        model.setOnRedo([&](const Model&) {
+        model.setOnRedo([&](const Model& m) {
             guiTable.updateContent(m);
+        });
+        model.setOnAction([&](const Model& m) {
+            guiTable.updateContent(m);
+        });
+        model.setOnFailedAction([&](const Model& m) {
+            guiTable.failureFlash(m);
         });
     }
 
@@ -37,7 +53,7 @@ public:
     {
         // Dereference the model for const access to the current state snapshot
         return model->at(key);
-        
+
         // Alternatively:
         // return model.getCurrent().at(key);
 
@@ -51,6 +67,7 @@ public:
         // Take a snapshot, then perform the modification
         model.snapshotAnd([&](Model& m) {
             m[updatedKey] = updatedValue;
+            return UndoableStateResult::success;
         });
     }
 
@@ -68,6 +85,7 @@ public:
                 // Then perform the actions
                 model.doWithoutSnapshot([&](Model& m) {
                     m.insert(entry);
+                    return UndoableStateResult::success;
                 });
             }
         }
@@ -80,7 +98,7 @@ public:
         if (!model.undo())
         {
             // No prior states exist, give visual feedback to the user
-            guiTable.failureFlash();
+            guiTable.failureFlash(*model);
         }
 
         // The onUndo callback takes care of refreshing the table view
@@ -91,15 +109,15 @@ public:
         if (!model.redo())
         {
             // No prior states exist, give visual feedback to the user
-            guiTable.failureFlash();
+            guiTable.failureFlash(*model);
         }
 
         // The onRedo callback takes care of refreshing the table view
     }
 
 private:
-    UndoableModel model{};
-    guiLibraryTable& guiTable;
+    UndoableStateModel model{};
+    GuiLibraryTable& guiTable;
 };
 
 ```
