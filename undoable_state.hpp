@@ -9,6 +9,7 @@ class UndoableState
 {
 public:
     static_assert((Capacity & (Capacity - 1)) == 0, "Capacity must be a power of 2");
+    static_assert(Capacity != 0, "Capacity must not be 0");
 
     using Action = std::function<void(ModelType&)>;
     using Callback = std::function<void(const ModelType&)>;
@@ -84,6 +85,21 @@ public:
         if (onRedo)
             onRedo(buffer[current]);
         return true;
+    }
+
+    /* Clears the undo stack and sets the model to the one provided.
+    If zeroOut is false, stale entries remain in the buffer and keep any resources
+    they own (e.g. shared_ptr) alive until overwritten. */
+    void reset(const ModelType& initial = {}, bool zeroOut = true)
+    {
+        current = 0;
+        head = 0;
+        tail = Capacity - 1;
+
+        if (zeroOut)
+            std::fill(buffer.begin(), buffer.end(), ModelType{});
+
+        buffer[current] = initial;
     }
 
     [[nodiscard]] bool canUndo() const
